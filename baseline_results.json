@@ -1,0 +1,114 @@
+[
+  {
+    "id": "Q1",
+    "title": "Sales report - revenue per store for one month",
+    "sql": "SELECT s.store_name, COUNT(*) AS orders, SUM(o.total_amount) AS revenue\nFROM orders o\nJOIN stores s ON s.store_id = o.store_id\nWHERE o.order_date >= DATE '2026-03-01'\n  AND o.order_date <  DATE '2026-04-01'\n  AND o.status = 'COMPLETED'\nGROUP BY s.store_name\nORDER BY revenue DESC;",
+    "median_ms": 17.156,
+    "min_ms": 15.998,
+    "max_ms": 19.966,
+    "runs": [
+      17.452,
+      19.966,
+      17.156,
+      15.998,
+      16.37
+    ],
+    "plan": "Sort  (cost=7917.31..7917.36 rows=20 width=48) (actual time=16.114..16.268 rows=20 loops=1)\n  Sort Key: (sum(o.total_amount)) DESC\n  Sort Method: quicksort  Memory: 26kB\n  Buffers: shared hit=4755\n  ->  Finalize GroupAggregate  (cost=7911.56..7916.88 rows=20 width=48) (actual time=16.033..16.221 rows=20 loops=1)\n        Group Key: s.store_name\n        Buffers: shared hit=4752\n        ->  Gather Merge  (cost=7911.56..7916.23 rows=40 width=48) (actual time=16.016..16.180 rows=60 loops=1)\n              Workers Planned: 2\n              Workers Launched: 2\n              Buffers: shared hit=4752\n              ->  Sort  (cost=6911.54..6911.59 rows=20 width=48) (actual time=9.934..9.938 rows=20 loops=3)\n                    Sort Key: s.store_name\n                    Sort Method: quicksort  Memory: 27kB\n                    Buffers: shared hit=4752\n                    Worker 0:  Sort Method: quicksort  Memory: 27kB\n                    Worker 1:  Sort Method: quicksort  Memory: 27kB\n                    ->  Partial HashAggregate  (cost=6910.86..6911.11 rows=20 width=48) (actual time=9.901..9.908 rows=20 loops=3)\n                          Group Key: s.store_name\n                          Batches: 1  Memory Usage: 24kB\n                          Buffers: shared hit=4736\n                          Worker 0:  Batches: 1  Memory Usage: 24kB\n                          Worker 1:  Batches: 1  Memory Usage: 24kB\n                          ->  Hash Join  (cost=1.45..6898.98 rows=1583 width=16) (actual time=0.739..9.596 rows=1314 loops=3)\n                                Hash Cond: (o.store_id = s.store_id)\n                                Buffers: shared hit=4736\n                                ->  Parallel Seq Scan on orders o  (cost=0.00..6892.50 rows=1583 width=12) (actual time=0.699..9.334 rows=1314 loops=3)\n                                      Filter: ((order_date >= '2026-03-01'::date) AND (order_date < '2026-04-01'::date) AND ((status)::text = 'COMPLETED'::text))\n                                      Rows Removed by Filter: 98686\n                                      Buffers: shared hit=4705\n                                ->  Hash  (cost=1.20..1.20 rows=20 width=12) (actual time=0.016..0.017 rows=20 loops=3)\n                                      Buckets: 1024  Batches: 1  Memory Usage: 9kB\n                                      Buffers: shared hit=3\n                                      ->  Seq Scan on stores s  (cost=0.00..1.20 rows=20 width=12) (actual time=0.006..0.007 rows=20 loops=3)\n                                            Buffers: shared hit=3\nPlanning:\n  Buffers: shared hit=260\nPlanning Time: 0.572 ms\nExecution Time: 16.370 ms"
+  },
+  {
+    "id": "Q2",
+    "title": "Customer order history lookup (customer service screen)",
+    "sql": "SELECT *\nFROM orders\nWHERE customer_id = 12345\nORDER BY order_date DESC;",
+    "median_ms": 14.856,
+    "min_ms": 14.481,
+    "max_ms": 15.015,
+    "runs": [
+      15.015,
+      14.61,
+      14.856,
+      14.481,
+      14.88
+    ],
+    "plan": "Gather Merge  (cost=7267.55..7268.25 rows=6 width=33) (actual time=13.236..14.819 rows=6 loops=1)\n  Workers Planned: 2\n  Workers Launched: 2\n  Buffers: shared hit=4819\n  ->  Sort  (cost=6267.52..6267.53 rows=3 width=33) (actual time=9.809..9.810 rows=2 loops=3)\n        Sort Key: order_date DESC\n        Sort Method: quicksort  Memory: 25kB\n        Buffers: shared hit=4819\n        Worker 0:  Sort Method: quicksort  Memory: 25kB\n        Worker 1:  Sort Method: quicksort  Memory: 25kB\n        ->  Parallel Seq Scan on orders  (cost=0.00..6267.50 rows=3 width=33) (actual time=5.631..9.746 rows=2 loops=3)\n              Filter: (customer_id = 12345)\n              Rows Removed by Filter: 99998\n              Buffers: shared hit=4705\nPlanning:\n  Buffers: shared hit=89\nPlanning Time: 0.327 ms\nExecution Time: 14.880 ms"
+  },
+  {
+    "id": "Q3",
+    "title": "Top 10 best-selling products in a quarter",
+    "sql": "SELECT p.product_name, SUM(oi.quantity) AS units_sold\nFROM order_items oi\nJOIN orders o   ON o.order_id = oi.order_id\nJOIN products p ON p.product_id = oi.product_id\nWHERE o.order_date >= DATE '2026-01-01'\n  AND o.order_date <  DATE '2026-04-01'\nGROUP BY p.product_name\nORDER BY units_sold DESC\nLIMIT 10;",
+    "median_ms": 137.592,
+    "min_ms": 132.126,
+    "max_ms": 141.767,
+    "runs": [
+      137.592,
+      141.767,
+      140.63,
+      132.126,
+      132.426
+    ],
+    "plan": "Limit  (cost=19745.12..19745.15 rows=10 width=20) (actual time=131.570..131.990 rows=10 loops=1)\n  Buffers: shared hit=10598\n  ->  Sort  (cost=19745.12..19757.62 rows=5000 width=20) (actual time=131.568..131.987 rows=10 loops=1)\n        Sort Key: (sum(oi.quantity)) DESC\n        Sort Method: top-N heapsort  Memory: 26kB\n        Buffers: shared hit=10598\n        ->  Finalize HashAggregate  (cost=19587.07..19637.07 rows=5000 width=20) (actual time=130.569..131.421 rows=5000 loops=1)\n              Group Key: p.product_name\n              Batches: 1  Memory Usage: 721kB\n              Buffers: shared hit=10595\n              ->  Gather  (cost=18487.07..19537.07 rows=10000 width=20) (actual time=123.061..127.297 rows=14446 loops=1)\n                    Workers Planned: 2\n                    Workers Launched: 2\n                    Buffers: shared hit=10595\n                    ->  Partial HashAggregate  (cost=17487.07..17537.07 rows=5000 width=20) (actual time=120.091..120.678 rows=4815 loops=3)\n                          Group Key: p.product_name\n                          Batches: 1  Memory Usage: 721kB\n                          Buffers: shared hit=10595\n                          Worker 0:  Batches: 1  Memory Usage: 721kB\n                          Worker 1:  Batches: 1  Memory Usage: 721kB\n                          ->  Hash Join  (cost=6835.90..17366.59 rows=24096 width=16) (actual time=15.434..109.889 rows=19485 loops=3)\n                                Hash Cond: (oi.product_id = p.product_id)\n                                Buffers: shared hit=10595\n                                ->  Parallel Hash Join  (cost=6680.40..17147.79 rows=24096 width=8) (actual time=12.698..97.910 rows=19485 loops=3)\n                                      Hash Cond: (oi.order_id = o.order_id)\n                                      Buffers: shared hit=10438\n                                      ->  Parallel Seq Scan on order_items oi  (cost=0.00..9483.00 rows=375000 width=12) (actual time=0.008..31.646 rows=300000 loops=3)\n                                            Buffers: shared hit=5733\n                                      ->  Parallel Hash  (cost=6580.00..6580.00 rows=8032 width=4) (actual time=11.836..11.837 rows=6495 loops=3)\n                                            Buckets: 32768  Batches: 1  Memory Usage: 1088kB\n                                            Buffers: shared hit=4705\n                                            ->  Parallel Seq Scan on orders o  (cost=0.00..6580.00 rows=8032 width=4) (actual time=0.798..10.445 rows=6495 loops=3)\n                                                  Filter: ((order_date >= '2026-01-01'::date) AND (order_date < '2026-04-01'::date))\n                                                  Rows Removed by Filter: 93505\n                                                  Buffers: shared hit=4705\n                                ->  Hash  (cost=93.00..93.00 rows=5000 width=16) (actual time=2.687..2.688 rows=5000 loops=3)\n                                      Buckets: 8192  Batches: 1  Memory Usage: 315kB\n                                      Buffers: shared hit=129\n                                      ->  Seq Scan on products p  (cost=0.00..93.00 rows=5000 width=16) (actual time=0.008..0.482 rows=5000 loops=3)\n                                            Buffers: shared hit=129\nPlanning:\n  Buffers: shared hit=274\nPlanning Time: 0.757 ms\nExecution Time: 132.426 ms"
+  },
+  {
+    "id": "Q4",
+    "title": "Inventory lookup - stock of one product across all stores",
+    "sql": "SELECT st.store_name, i.stock_qty, i.last_updated\nFROM inventory i\nJOIN stores st ON st.store_id = i.store_id\nWHERE i.product_id = 777;",
+    "median_ms": 4.598,
+    "min_ms": 4.422,
+    "max_ms": 8.62,
+    "runs": [
+      4.65,
+      4.543,
+      8.62,
+      4.422,
+      4.598
+    ],
+    "plan": "Nested Loop  (cost=0.00..1893.98 rows=20 width=16) (actual time=0.053..4.555 rows=20 loops=1)\n  Join Filter: (st.store_id = i.store_id)\n  Rows Removed by Join Filter: 320\n  Buffers: shared hit=638\n  ->  Seq Scan on inventory i  (cost=0.00..1887.00 rows=20 width=12) (actual time=0.039..4.498 rows=20 loops=1)\n        Filter: (product_id = 777)\n        Rows Removed by Filter: 99980\n        Buffers: shared hit=637\n  ->  Materialize  (cost=0.00..1.30 rows=20 width=12) (actual time=0.000..0.001 rows=17 loops=20)\n        Buffers: shared hit=1\n        ->  Seq Scan on stores st  (cost=0.00..1.20 rows=20 width=12) (actual time=0.002..0.003 rows=17 loops=1)\n              Buffers: shared hit=1\nPlanning:\n  Buffers: shared hit=211\nPlanning Time: 0.576 ms\nExecution Time: 4.598 ms"
+  },
+  {
+    "id": "Q5",
+    "title": "Monthly revenue for a year (function applied on the date column)",
+    "sql": "SELECT EXTRACT(MONTH FROM order_date) AS month, SUM(total_amount) AS revenue\nFROM orders\nWHERE EXTRACT(YEAR FROM order_date) = 2025\nGROUP BY EXTRACT(MONTH FROM order_date)\nORDER BY month;",
+    "median_ms": 61.172,
+    "min_ms": 54.712,
+    "max_ms": 66.111,
+    "runs": [
+      65.831,
+      54.712,
+      66.111,
+      61.172,
+      56.928
+    ],
+    "plan": "Finalize GroupAggregate  (cost=7610.61..7792.16 rows=922 width=64) (actual time=52.876..56.805 rows=12 loops=1)\n  Group Key: (EXTRACT(month FROM order_date))\n  Buffers: shared hit=4817\n  ->  Gather Merge  (cost=7610.61..7768.95 rows=1250 width=64) (actual time=52.336..56.758 rows=36 loops=1)\n        Workers Planned: 2\n        Workers Launched: 2\n        Buffers: shared hit=4817\n        ->  Partial GroupAggregate  (cost=6610.59..6624.65 rows=625 width=64) (actual time=39.986..45.223 rows=12 loops=3)\n              Group Key: (EXTRACT(month FROM order_date))\n              Buffers: shared hit=4817\n              ->  Sort  (cost=6610.59..6612.15 rows=625 width=40) (actual time=39.493..40.980 rows=26032 loops=3)\n                    Sort Key: (EXTRACT(month FROM order_date))\n                    Sort Method: quicksort  Memory: 1564kB\n                    Buffers: shared hit=4817\n                    Worker 0:  Sort Method: quicksort  Memory: 1447kB\n                    Worker 1:  Sort Method: quicksort  Memory: 3112kB\n                    ->  Parallel Seq Scan on orders  (cost=0.00..6581.56 rows=625 width=40) (actual time=0.745..32.858 rows=26032 loops=3)\n                          Filter: (EXTRACT(year FROM order_date) = '2025'::numeric)\n                          Rows Removed by Filter: 73968\n                          Buffers: shared hit=4705\nPlanning:\n  Buffers: shared hit=91\nPlanning Time: 0.369 ms\nExecution Time: 56.928 ms"
+  },
+  {
+    "id": "Q6",
+    "title": "Customers who did NOT order in 2026 (NOT IN subquery) - re-engagement campaign",
+    "sql": "SELECT c.customer_id, c.full_name, c.email\nFROM customers c\nWHERE c.customer_id NOT IN (\n    SELECT o.customer_id\n    FROM orders o\n    WHERE o.order_date >= DATE '2026-01-01'\n);",
+    "median_ms": 47.471,
+    "min_ms": 45.391,
+    "max_ms": 51.425,
+    "runs": [
+      48.073,
+      47.471,
+      51.425,
+      45.391,
+      45.739
+    ],
+    "plan": "Seq Scan on customers c  (cost=8615.54..9781.54 rows=25000 width=43) (actual time=34.926..44.969 rows=13603 loops=1)\n  Filter: (NOT (hashed SubPlan 1))\n  Rows Removed by Filter: 36397\n  Buffers: shared hit=5246\n  SubPlan 1\n    ->  Seq Scan on orders o  (cost=0.00..8455.00 rows=64217 width=4) (actual time=2.217..20.869 rows=65476 loops=1)\n          Filter: (order_date >= '2026-01-01'::date)\n          Rows Removed by Filter: 234524\n          Buffers: shared hit=4705\nPlanning:\n  Buffers: shared hit=88\nPlanning Time: 0.317 ms\nExecution Time: 45.739 ms"
+  },
+  {
+    "id": "Q7",
+    "title": "Low-stock alert for one store",
+    "sql": "SELECT *\nFROM inventory\nWHERE store_id = 5\n  AND stock_qty < 20;",
+    "median_ms": 4.823,
+    "min_ms": 4.576,
+    "max_ms": 4.875,
+    "runs": [
+      4.576,
+      4.868,
+      4.875,
+      4.737,
+      4.823
+    ],
+    "plan": "Seq Scan on inventory  (cost=0.00..2137.00 rows=190 width=20) (actual time=0.047..4.777 rows=198 loops=1)\n  Filter: ((stock_qty < 20) AND (store_id = 5))\n  Rows Removed by Filter: 99802\n  Buffers: shared hit=637\nPlanning:\n  Buffers: shared hit=72\nPlanning Time: 0.319 ms\nExecution Time: 4.823 ms"
+  }
+]

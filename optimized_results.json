@@ -1,0 +1,114 @@
+[
+  {
+    "id": "Q1",
+    "title": "Sales report - uses partitioned table + date index (partition pruning)",
+    "sql": "SELECT s.store_name, COUNT(*) AS orders, SUM(o.total_amount) AS revenue\nFROM orders_part o\nJOIN stores s ON s.store_id = o.store_id\nWHERE o.order_date >= DATE '2026-03-01'\n  AND o.order_date <  DATE '2026-04-01'\n  AND o.status = 'COMPLETED'\nGROUP BY s.store_name\nORDER BY revenue DESC;",
+    "median_ms": 4.765,
+    "min_ms": 4.39,
+    "max_ms": 8.27,
+    "runs": [
+      4.765,
+      8.27,
+      4.39,
+      5.98,
+      4.707
+    ],
+    "plan": "Sort  (cost=949.62..949.67 rows=20 width=48) (actual time=4.633..4.637 rows=20 loops=1)\n  Sort Key: (sum(o.total_amount)) DESC\n  Sort Method: quicksort  Memory: 26kB\n  Buffers: shared hit=594\n  ->  HashAggregate  (cost=948.94..949.19 rows=20 width=48) (actual time=4.598..4.606 rows=20 loops=1)\n        Group Key: s.store_name\n        Batches: 1  Memory Usage: 24kB\n        Buffers: shared hit=591\n        ->  Hash Join  (cost=239.67..918.84 rows=4013 width=16) (actual time=0.467..3.767 rows=3942 loops=1)\n              Hash Cond: (o.store_id = s.store_id)\n              Buffers: shared hit=591\n              ->  Bitmap Heap Scan on orders_2026 o  (cost=238.22..904.62 rows=4013 width=12) (actual time=0.436..3.250 rows=3942 loops=1)\n                    Recheck Cond: ((order_date >= '2026-03-01'::date) AND (order_date < '2026-04-01'::date))\n                    Filter: ((status)::text = 'COMPLETED'::text)\n                    Rows Removed by Filter: 2762\n                    Heap Blocks: exact=546\n                    Buffers: shared hit=590\n                    ->  Bitmap Index Scan on orders_2026_order_date_store_id_status_total_amount_custome_idx  (cost=0.00..237.22 rows=6880 width=0) (actual time=0.374..0.375 rows=6704 loops=1)\n                          Index Cond: ((order_date >= '2026-03-01'::date) AND (order_date < '2026-04-01'::date))\n                          Buffers: shared hit=44\n              ->  Hash  (cost=1.20..1.20 rows=20 width=12) (actual time=0.016..0.017 rows=20 loops=1)\n                    Buckets: 1024  Batches: 1  Memory Usage: 9kB\n                    Buffers: shared hit=1\n                    ->  Seq Scan on stores s  (cost=0.00..1.20 rows=20 width=12) (actual time=0.004..0.006 rows=20 loops=1)\n                          Buffers: shared hit=1\nPlanning:\n  Buffers: shared hit=417\nPlanning Time: 0.871 ms\nExecution Time: 4.707 ms"
+  },
+  {
+    "id": "Q2",
+    "title": "Customer history - SELECT * replaced by needed columns, composite index used",
+    "sql": "SELECT order_id, order_date, status, total_amount\nFROM orders\nWHERE customer_id = 12345\nORDER BY order_date DESC;",
+    "median_ms": 0.124,
+    "min_ms": 0.115,
+    "max_ms": 0.131,
+    "runs": [
+      0.126,
+      0.115,
+      0.124,
+      0.131,
+      0.118
+    ],
+    "plan": "Sort  (cost=31.85..31.87 rows=7 width=25) (actual time=0.069..0.069 rows=6 loops=1)\n  Sort Key: order_date DESC\n  Sort Method: quicksort  Memory: 25kB\n  Buffers: shared hit=12\n  ->  Bitmap Heap Scan on orders  (cost=4.48..31.75 rows=7 width=25) (actual time=0.032..0.050 rows=6 loops=1)\n        Recheck Cond: (customer_id = 12345)\n        Heap Blocks: exact=6\n        Buffers: shared hit=9\n        ->  Bitmap Index Scan on idx_orders_customer_date  (cost=0.00..4.48 rows=7 width=0) (actual time=0.019..0.019 rows=6 loops=1)\n              Index Cond: (customer_id = 12345)\n              Buffers: shared hit=3\nPlanning:\n  Buffers: shared hit=134\nPlanning Time: 0.363 ms\nExecution Time: 0.118 ms"
+  },
+  {
+    "id": "Q3",
+    "title": "Top 10 products - reads the pre-aggregated materialized view instead of joining 900k rows",
+    "sql": "SELECT p.product_name, SUM(m.units_sold) AS units_sold\nFROM mv_daily_product_sales m\nJOIN products p ON p.product_id = m.product_id\nWHERE m.order_date >= DATE '2026-01-01'\n  AND m.order_date <  DATE '2026-04-01'\nGROUP BY p.product_name\nORDER BY units_sold DESC\nLIMIT 10;",
+    "median_ms": 44.21,
+    "min_ms": 41.216,
+    "max_ms": 60.839,
+    "runs": [
+      42.39,
+      60.839,
+      46.698,
+      41.216,
+      44.21
+    ],
+    "plan": "Limit  (cost=6983.12..6983.15 rows=10 width=44) (actual time=43.959..43.964 rows=10 loops=1)\n  Buffers: shared hit=4662\n  ->  Sort  (cost=6983.12..6995.62 rows=5000 width=44) (actual time=43.957..43.961 rows=10 loops=1)\n        Sort Key: (sum(m.units_sold)) DESC\n        Sort Method: top-N heapsort  Memory: 26kB\n        Buffers: shared hit=4662\n        ->  HashAggregate  (cost=6812.58..6875.08 rows=5000 width=44) (actual time=42.455..43.235 rows=5000 loops=1)\n              Group Key: p.product_name\n              Batches: 1  Memory Usage: 977kB\n              Buffers: shared hit=4659\n              ->  Hash Join  (cost=932.27..6531.43 rows=56229 width=20) (actual time=3.736..30.534 rows=54851 loops=1)\n                    Hash Cond: (m.product_id = p.product_id)\n                    Buffers: shared hit=4659\n                    ->  Bitmap Heap Scan on mv_daily_product_sales m  (cost=776.77..6228.21 rows=56229 width=12) (actual time=2.560..19.365 rows=54851 loops=1)\n                          Recheck Cond: ((order_date >= '2026-01-01'::date) AND (order_date < '2026-04-01'::date))\n                          Heap Blocks: exact=4565\n                          Buffers: shared hit=4616\n                          ->  Bitmap Index Scan on idx_mv_daily_date  (cost=0.00..762.71 rows=56229 width=0) (actual time=1.992..1.993 rows=54851 loops=1)\n                                Index Cond: ((order_date >= '2026-01-01'::date) AND (order_date < '2026-04-01'::date))\n                                Buffers: shared hit=51\n                    ->  Hash  (cost=93.00..93.00 rows=5000 width=16) (actual time=1.141..1.142 rows=5000 loops=1)\n                          Buckets: 8192  Batches: 1  Memory Usage: 315kB\n                          Buffers: shared hit=43\n                          ->  Seq Scan on products p  (cost=0.00..93.00 rows=5000 width=16) (actual time=0.005..0.365 rows=5000 loops=1)\n                                Buffers: shared hit=43\nPlanning:\n  Buffers: shared hit=274\nPlanning Time: 0.672 ms\nExecution Time: 44.210 ms"
+  },
+  {
+    "id": "Q4",
+    "title": "Inventory lookup - same query, now uses idx_inventory_product",
+    "sql": "SELECT st.store_name, i.stock_qty, i.last_updated\nFROM inventory i\nJOIN stores st ON st.store_id = i.store_id\nWHERE i.product_id = 777;",
+    "median_ms": 0.168,
+    "min_ms": 0.147,
+    "max_ms": 0.229,
+    "runs": [
+      0.183,
+      0.15,
+      0.168,
+      0.229,
+      0.147
+    ],
+    "plan": "Hash Join  (cost=5.90..75.58 rows=20 width=16) (actual time=0.043..0.096 rows=20 loops=1)\n  Hash Cond: (i.store_id = st.store_id)\n  Buffers: shared hit=23\n  ->  Bitmap Heap Scan on inventory i  (cost=4.45..74.07 rows=20 width=12) (actual time=0.015..0.065 rows=20 loops=1)\n        Recheck Cond: (product_id = 777)\n        Heap Blocks: exact=20\n        Buffers: shared hit=22\n        ->  Bitmap Index Scan on idx_inventory_product  (cost=0.00..4.44 rows=20 width=0) (actual time=0.009..0.009 rows=20 loops=1)\n              Index Cond: (product_id = 777)\n              Buffers: shared hit=2\n  ->  Hash  (cost=1.20..1.20 rows=20 width=12) (actual time=0.014..0.014 rows=20 loops=1)\n        Buckets: 1024  Batches: 1  Memory Usage: 9kB\n        Buffers: shared hit=1\n        ->  Seq Scan on stores st  (cost=0.00..1.20 rows=20 width=12) (actual time=0.003..0.005 rows=20 loops=1)\n              Buffers: shared hit=1\nPlanning:\n  Buffers: shared hit=249\nPlanning Time: 0.625 ms\nExecution Time: 0.147 ms"
+  },
+  {
+    "id": "Q5",
+    "title": "Monthly revenue - function on column replaced by a sargable date range",
+    "sql": "SELECT EXTRACT(MONTH FROM order_date) AS month, SUM(total_amount) AS revenue\nFROM orders_part\nWHERE order_date >= DATE '2025-01-01'\n  AND order_date <  DATE '2026-01-01'\nGROUP BY EXTRACT(MONTH FROM order_date)\nORDER BY month;",
+    "median_ms": 41.248,
+    "min_ms": 30.995,
+    "max_ms": 43.684,
+    "runs": [
+      43.596,
+      43.684,
+      30.995,
+      31.814,
+      41.248
+    ],
+    "plan": "Sort  (cost=2502.30..2505.80 rows=1400 width=64) (actual time=41.140..41.142 rows=12 loops=1)\n  Sort Key: (EXTRACT(month FROM orders_part.order_date))\n  Sort Method: quicksort  Memory: 25kB\n  Buffers: shared hit=654\n  ->  HashAggregate  (cost=2408.14..2429.14 rows=1400 width=64) (actual time=41.070..41.109 rows=12 loops=1)\n        Group Key: EXTRACT(month FROM orders_part.order_date)\n        Batches: 1  Memory Usage: 73kB\n        Buffers: shared hit=651\n        ->  Seq Scan on orders_2025 orders_part  (cost=0.00..2017.66 rows=78095 width=40) (actual time=0.016..20.470 rows=78095 loops=1)\n              Filter: ((order_date >= '2025-01-01'::date) AND (order_date < '2026-01-01'::date))\n              Buffers: shared hit=651\nPlanning:\n  Buffers: shared hit=274\nPlanning Time: 0.942 ms\nExecution Time: 41.248 ms"
+  },
+  {
+    "id": "Q6",
+    "title": "Re-engagement list - NOT IN rewritten as NOT EXISTS (anti-join)",
+    "sql": "SELECT c.customer_id, c.full_name, c.email\nFROM customers c\nWHERE NOT EXISTS (\n    SELECT 1\n    FROM orders o\n    WHERE o.customer_id = c.customer_id\n      AND o.order_date >= DATE '2026-01-01'\n);",
+    "median_ms": 39.592,
+    "min_ms": 32.352,
+    "max_ms": 50.363,
+    "runs": [
+      32.352,
+      50.363,
+      49.943,
+      39.592,
+      34.808
+    ],
+    "plan": "Hash Right Anti Join  (cost=1666.42..5182.01 rows=5453 width=43) (actual time=30.002..32.621 rows=13603 loops=1)\n  Hash Cond: (o.customer_id = c.customer_id)\n  Buffers: shared hit=940\n  ->  Index Only Scan using idx_orders_date on orders o  (cost=0.42..2704.80 rows=64707 width=4) (actual time=0.019..6.136 rows=65476 loops=1)\n        Index Cond: (order_date >= '2026-01-01'::date)\n        Heap Fetches: 0\n        Buffers: shared hit=399\n  ->  Hash  (cost=1041.00..1041.00 rows=50000 width=43) (actual time=10.990..10.993 rows=50000 loops=1)\n        Buckets: 65536  Batches: 1  Memory Usage: 4251kB\n        Buffers: shared hit=541\n        ->  Seq Scan on customers c  (cost=0.00..1041.00 rows=50000 width=43) (actual time=0.008..3.864 rows=50000 loops=1)\n              Buffers: shared hit=541\nPlanning:\n  Buffers: shared hit=283\nPlanning Time: 0.735 ms\nExecution Time: 34.808 ms"
+  },
+  {
+    "id": "Q7",
+    "title": "Low-stock alert - SELECT * replaced by needed columns -> covering index (index-only scan)",
+    "sql": "SELECT inventory_id, product_id, stock_qty, last_updated\nFROM inventory\nWHERE store_id = 5\n  AND stock_qty < 20;",
+    "median_ms": 0.127,
+    "min_ms": 0.083,
+    "max_ms": 0.192,
+    "runs": [
+      0.083,
+      0.177,
+      0.094,
+      0.192,
+      0.127
+    ],
+    "plan": "Index Only Scan using idx_inventory_store_stock on inventory  (cost=0.42..8.08 rows=183 width=16) (actual time=0.036..0.066 rows=198 loops=1)\n  Index Cond: ((store_id = 5) AND (stock_qty < 20))\n  Heap Fetches: 0\n  Buffers: shared hit=5\nPlanning:\n  Buffers: shared hit=117\nPlanning Time: 0.496 ms\nExecution Time: 0.127 ms"
+  }
+]
